@@ -1,0 +1,288 @@
+openapi: 3.0.3
+info:
+  title: HiBank - Core API
+  version: 0.2.0
+  description: >
+    REST API backend for HiBank digital banking mobile client.
+    Follows double-entry bookkeeping, strict concurrency, ACID transactions, idempotency, and modular monolith architecture.
+servers:
+  - url: http://localhost:8080
+    description: Local Development Server
+
+paths:
+  /healthz:
+    get:
+      summary: Liveness Probe
+      description: Returns 200 OK if the process is alive.
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: bank-a-api
+
+  /readyz:
+    get:
+      summary: Readiness Probe
+      description: Returns 200 OK if the database and downstream services are connected.
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+                  service:
+                    type: string
+                    example: bank-a-api
+                  database:
+                    type: string
+                    example: up
+        '503':
+          description: Dependency unavailable
+
+  /v1/ping:
+    get:
+      summary: API V1 Ping
+      description: Quick connectivity check for v1 route group.
+      responses:
+        '200':
+          description: Ping response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: pong
+                  version:
+                    type: string
+                    example: v1
+
+  /v1/auth/register:
+    post:
+      summary: Register User
+      description: Registers a new user account with Argon2id hashed password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Email or phone already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/auth/login:
+    post:
+      summary: Login User
+      description: Validates email and password, issuing a 256-bit opaque session token with sliding inactivity timeout.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Successfully authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/auth/refresh:
+    post:
+      summary: Touch / Extend Session
+      description: Refreshes the sliding inactivity window for the active session.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Session inactivity window extended successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '401':
+          description: Session expired or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/auth/logout:
+    post:
+      summary: Logout Session
+      description: Immediately revokes the active session from the ephemeral cache.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Logged out successfully
+
+components:
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - full_name
+        - email
+        - phone
+        - password
+      properties:
+        full_name:
+          type: string
+          example: Ihsan Pratama
+        email:
+          type: string
+          format: email
+          example: ihsan@hibank.com
+        phone:
+          type: string
+          example: "081234567890"
+        password:
+          type: string
+          format: password
+          example: SuperSecretPassword123!
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        status:
+          type: string
+          example: active
+        created_at:
+          type: string
+          format: date-time
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          example: ihsan@hibank.com
+        password:
+          type: string
+          format: password
+          example: SuperSecretPassword123!
+        device_id:
+          type: string
+          example: iphone-15-pro-max
+
+    RefreshRequest:
+      type: object
+      properties:
+        session_token:
+          type: string
+          example: 8f4e2b109c3d4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b
+        refresh_token:
+          type: string
+          description: Legacy alias for session_token
+        token:
+          type: string
+
+    SessionResponse:
+      type: object
+      properties:
+        session_token:
+          type: string
+          example: 8f4e2b109c3d4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b
+        access_token:
+          type: string
+          description: Mirrored session token for backward-compatible clients
+          example: 8f4e2b109c3d4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Seconds remaining in sliding inactivity window
+          example: 900
+
+    TokensResponse:
+      $ref: '#/components/schemas/SessionResponse'
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              example: INVALID_INPUT
+            message:
+              type: string
+              example: Invalid input parameters
+            request_id:
+              type: string
+              example: 550e8400-e29b-41d4-a716-446655440000
+            details:
+              type: array
+              items:
+                type: string

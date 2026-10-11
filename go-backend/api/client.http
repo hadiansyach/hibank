@@ -1,0 +1,78 @@
+### HiBank Core API - HTTP Client Test Collection
+### Gunakan dengan ekstensi REST Client (VS Code / Cursor) atau JetBrains HTTP Client.
+
+@baseUrl = http://localhost:8080
+
+### 1. Liveness Probe (Cek apakah aplikasi hidup)
+GET {{baseUrl}}/healthz
+Accept: application/json
+
+###
+
+### 2. Readiness Probe (Cek koneksi database PostgreSQL)
+GET {{baseUrl}}/readyz
+Accept: application/json
+
+###
+
+### 3. V1 Ping (Cek routing API v1)
+GET {{baseUrl}}/v1/ping
+Accept: application/json
+
+###
+
+### 4. Sprint 1 - Register User Baru
+POST {{baseUrl}}/v1/auth/register
+Accept: application/json
+Content-Type: application/json
+
+{
+  "full_name": "Ihsan Pratama",
+  "email": "ihsan@hibank.com",
+  "phone": "081234567890",
+  "password": "SuperSecretPassword123!"
+}
+
+###
+
+### 5. Sprint 1 - Login
+# @name loginRequest
+POST {{baseUrl}}/v1/auth/login
+Accept: application/json
+Content-Type: application/json
+
+{
+  "email": "budi@hibank.com",
+  "password": "Password123!",
+  "device_id": "iphone-15-pro-max"
+}
+
+###
+
+### Simpan session token dari login untuk request selanjutnya
+@sessionToken = {{loginRequest.response.body.session_token}}
+
+### 6. Touch / Extend Session (Sliding Inactivity Window)
+POST {{baseUrl}}/v1/auth/refresh
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{sessionToken}}
+
+{
+  "session_token": "{{sessionToken}}"
+}
+
+###
+
+### 7. Logout (Immediate Revocation)
+POST {{baseUrl}}/v1/auth/logout
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{sessionToken}}
+
+###
+
+### 8. Custom Request ID Header Tracing Test
+GET {{baseUrl}}/healthz
+Accept: application/json
+X-Request-Id: manual-test-trace-id-12345
