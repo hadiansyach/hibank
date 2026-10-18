@@ -76,3 +76,135 @@ Authorization: Bearer {{sessionToken}}
 GET {{baseUrl}}/healthz
 Accept: application/json
 X-Request-Id: manual-test-trace-id-12345
+
+###
+### =========================================================================
+### Sprint 2: User Profile & Security PIN
+### =========================================================================
+
+### 9. Get Authenticated User Profile
+GET {{baseUrl}}/v1/users/me
+Accept: application/json
+Authorization: Bearer {{sessionToken}}
+
+###
+
+### 10. Set / Update 6-Digit Transaction PIN (Initial Setup)
+PUT {{baseUrl}}/v1/users/me/pin
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{sessionToken}}
+
+{
+  "pin": "123456"
+}
+
+###
+
+### 11. Change 6-Digit Transaction PIN (With Current Old PIN)
+PUT {{baseUrl}}/v1/users/me/pin
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{sessionToken}}
+
+{
+  "pin": "654321",
+  "old_pin": "123456"
+}
+
+###
+### =========================================================================
+### Sprint 3: Accounts Management
+### =========================================================================
+
+### 12. Open New Savings Account
+# @name createAccountRequest
+POST {{baseUrl}}/v1/accounts
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{sessionToken}}
+
+{
+  "account_type": "SAVINGS"
+}
+
+###
+
+### Simpan ID rekening dari request pembuatan untuk cek detail
+@createdAccountId = {{createAccountRequest.response.body.id}}
+
+### 13. List All Customer Accounts
+GET {{baseUrl}}/v1/accounts
+Accept: application/json
+Authorization: Bearer {{sessionToken}}
+
+###
+
+### 14. Get Account Detail By ID
+GET {{baseUrl}}/v1/accounts/{{createdAccountId}}
+Accept: application/json
+Authorization: Bearer {{sessionToken}}
+
+###
+### =========================================================================
+### Sprint 4: Double-Entry Ledger & Mutations
+### =========================================================================
+
+### 15. Get Account Mutations History (First Page)
+GET {{baseUrl}}/v1/accounts/{{createdAccountId}}/mutations?limit=10
+Accept: application/json
+Authorization: Bearer {{sessionToken}}
+
+###
+
+### 16. Get Account Mutations History (Next Page using Cursor)
+GET {{baseUrl}}/v1/accounts/{{createdAccountId}}/mutations?cursor=MjAyNi0xMC0xN1QxNDozMDowMFp8YjEyZTE5ZDctODMyNi00NzA1LTliMmEtODc0MjgxMzU4OTEx&limit=10
+Accept: application/json
+Authorization: Bearer {{sessionToken}}
+
+###
+### =========================================================================
+### Sprint 5: Transfers Management
+### =========================================================================
+
+### 17. Transfer Inquiry (Check Recipient & PII Masking)
+POST {{baseUrl}}/v1/transfers/inquiry
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{sessionToken}}
+
+{
+  "source_account_id": "{{createdAccountId}}",
+  "target_account_number": "1088291040"
+}
+
+###
+
+### 18. Execute Intra-Bank Transfer (With Idempotency-Key & PIN)
+# @name executeTransferRequest
+POST {{baseUrl}}/v1/transfers
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{sessionToken}}
+Idempotency-Key: a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d
+
+{
+  "source_account_id": "{{createdAccountId}}",
+  "target_account_number": "1088291040",
+  "amount": 50000,
+  "notes": "Bayar kopi",
+  "pin": "123456"
+}
+
+###
+
+@executedTransactionId = {{executeTransferRequest.response.body.transaction_id}}
+
+### 19. Get Transfer Receipt
+GET {{baseUrl}}/v1/transfers/{{executedTransactionId}}
+Accept: application/json
+Authorization: Bearer {{sessionToken}}
+
+
+
+

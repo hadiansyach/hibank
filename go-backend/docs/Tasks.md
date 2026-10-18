@@ -8,9 +8,9 @@ Dokumen ini memetakan seluruh backlog implementasi backend **HiBank Core Banking
 
 | MVP | Fokus | Sprint | Status | Target Demo |
 | :--- | :--- | :--- | :--- | :--- |
-| **MVP 1** | Fondasi & Identitas | Sprint 0 – 2 | 🟡 In Progress (Sprint 0 Done) | User registrasi, login JWT rotation, profil & PIN |
-| **MVP 2** | Rekening & Double-Entry Ledger | Sprint 3 – 4 | ⚪ Planned | Buat rekening, mutasi, verifikasi invarian saldo |
-| **MVP 3** | Transfer Sesama Bank & Concurrency | Sprint 5 – 6 | ⚪ Planned | Transfer internal, ordered lock, uji 50 race goroutine |
+| **MVP 1** | Fondasi & Identitas | Sprint 0 – 2 | 🟢 Selesai (98%) | User registrasi, login opaque token, profil & PIN, sliding window |
+| **MVP 2** | Rekening & Double-Entry Ledger | Sprint 3 – 4 | 🟢 Selesai (100%) | Buat rekening, mutasi cursor-based, ledger double-entry |
+| **MVP 3** | Transfer Sesama Bank & Concurrency | Sprint 5 – 6 | 🟢 Selesai (100%) | Transfer internal, ordered lock, uji 50 race goroutine, idempotency, rate limit & auditor |
 | **MVP 4** | Topup Payment Gateway | Sprint 7 | ⚪ Planned | Midtrans Snap sandbox, webhook idempoten SHA512 |
 | **MVP 5** | Transfer Antar Bank (Outbound) | Sprint 8 – 9 | ⚪ Planned | HMAC client ke partner bank, saga & rekonsiliasi |
 | **MVP 6** | Notifikasi & Biometrik FIDO | Sprint 10 – 11 | ⚪ Planned | Transactional outbox push FCM, asymmetric key FIDO |
@@ -67,106 +67,110 @@ Dokumen ini memetakan seluruh backlog implementasi backend **HiBank Core Banking
 
 ---
 
-### 🔲 Sprint 2: Profil Pengguna, PIN Transaksi & Hardening
+### ✅ Sprint 2: Profil Pengguna, PIN Transaksi & Hardening (Selesai)
 * **Target Demo:** Pengguna yang terautentikasi dapat melihat profil, memasang/mengubah PIN 6-digit, dan logout.
 * **Tabel Database:** Update `users` (kolom `pin_hash`, `pin_failed_attempts INT`, `pin_locked_until TIMESTAMP`).
 
 #### Tasks:
-- [ ] **Migrasi Database:** Tambah kolom PIN dan status lockout ke tabel `users`.
-- [ ] **Endpoint Profil (`GET /v1/users/me`):** Mengembalikan data pengguna login (nama, email, telepon, status KYC/akun).
-- [ ] **Manajemen PIN Transaksi (`PUT /v1/users/me/pin`):**
-  - [ ] Validasi PIN tepat 6 digit numerik.
-  - [ ] Hash PIN menggunakan algoritma kriptografis terpisah.
-  - [ ] Logika lockout: kunci percobaan verifikasi PIN jika salah $N$ kali berturut-turut (misal 5 kali) selama rentang waktu tertentu.
-- [ ] **Alur Logout (`POST /v1/auth/logout`):** Revoke refresh token aktif untuk perangkat yang sedang logout.
-- [ ] **Alur Logout Semua Perangkat (`POST /v1/auth/logout-all`):** Revoke seluruh token family milik `user_id`.
-- [ ] **Dokumentasi & OpenAPI:** Update `api/openapi.yaml` dan `api/client.http` untuk endpoint Sprint 1 & 2.
+- [x] **Migrasi Database:** Tambah kolom PIN dan status lockout ke tabel `users` (`000003_add_user_pin.up.sql`).
+- [x] **Endpoint Profil (`GET /v1/users/me`):** Mengembalikan data pengguna login (nama, email, telepon, status KYC/akun).
+- [x] **Manajemen PIN Transaksi (`PUT /v1/users/me/pin`):**
+  - [x] Validasi PIN tepat 6 digit numerik.
+  - [x] Hash PIN menggunakan algoritma kriptografis terpisah (Argon2id).
+  - [x] Logika lockout: kunci percobaan verifikasi PIN jika salah 3 kali berturut-turut selama 15 menit.
+- [x] **Alur Logout (`POST /v1/auth/logout`):** Revoke session aktif untuk perangkat yang sedang logout.
+- [ ] **Alur Logout Semua Perangkat (`POST /v1/auth/logout-all`):** Revoke seluruh sesi aktif milik `user_id` *(Catatan: Service `LogoutAll` & Session Store `RevokeAllUserSessions` sudah selesai; tinggal expose route HTTP handler)*.
+- [x] **Dokumentasi & OpenAPI:** Update `api/openapi.yaml` dan `api/client.http` untuk endpoint Sprint 1 & 2.
 
 ---
 
 ## MVP 2: Rekening dan Ledger Double-Entry (Sprint 3 – 4)
 
-### 🔲 Sprint 3: Manajemen Rekening
+### ✅ Sprint 3: Manajemen Rekening (Selesai)
 * **Target Demo:** Pengguna dapat membuka rekening tabungan dengan nomor rekening unik otomatis dan melihat daftar rekening miliknya.
 * **Tabel Database:**
-  * `accounts` (`id UUID`, `user_id FK`, `account_number VARCHAR(12) UNIQUE`, `balance BIGINT NOT NULL DEFAULT 0`, `currency VARCHAR(3) DEFAULT 'IDR'`, `status`, `created_at`, `updated_at`, `CONSTRAINT chk_balance_non_negative CHECK (balance >= 0)`)
+  * `accounts` (`id UUID`, `user_id FK`, `account_number VARCHAR(20) UNIQUE`, `account_type`, `balance BIGINT NOT NULL DEFAULT 0`, `status`, `created_at`, `updated_at`, `CONSTRAINT chk_accounts_balance CHECK (balance >= 0)`)
 
 #### Tasks:
-- [ ] **Migrasi Database:** Buat migrasi SQL tabel `accounts` dengan constraint `CHECK (balance >= 0)`.
-- [ ] **Generator Nomor Rekening:**
-  - [ ] Format standar: kode bank (3 digit) + kode cabang/produk + angka acak + Luhn check digit.
-  - [ ] Retry loop (maksimal 3 kali) apabila terjadi benturan `UNIQUE constraint`.
-- [ ] **Buka Rekening Baru (`POST /v1/accounts`):**
-  - [ ] Validasi kepemilikan user dan batas maksimal rekening per nasabah (misal: max 3 rekening tabungan).
-  - [ ] Saldo awal dibuat default `0`.
-- [ ] **Daftar Rekening (`GET /v1/accounts`):** Menampilkan semua rekening aktif milik user yang sedang login.
-- [ ] **Detail Rekening (`GET /v1/accounts/{id}`):**
-  - [ ] *Proteksi IDOR:* Validasi mutlak bahwa rekening dengan `id` tersebut dimiliki oleh user pemanggil. Mengembalikan `404` atau `403` jika bukan pemilik.
-- [ ] **Testing & DoD:** Test generator nomor rekening, test collision handling, test pencegahan IDOR.
+- [x] **Migrasi Database:** Buat migrasi SQL tabel `accounts` dengan constraint `CHECK (balance >= 0)` (`000004_create_accounts.up.sql`).
+- [x] **Generator Nomor Rekening:**
+  - [x] Format standar: kode bank (3 digit: `108`) + angka acak + Luhn mod-10 check digit (`internal/account/generator.go`).
+  - [x] Retry loop (maksimal 5 kali) apabila terjadi benturan `UNIQUE constraint`.
+- [x] **Buka Rekening Baru (`POST /v1/accounts`):**
+  - [x] Validasi kepemilikan user dan batas maksimal rekening per nasabah (maksimal 3 rekening tabungan aktif).
+  - [x] Saldo awal dibuat default `0`.
+- [x] **Daftar Rekening (`GET /v1/accounts`):** Menampilkan semua rekening aktif milik user yang sedang login.
+- [x] **Detail Rekening (`GET /v1/accounts/{id}`):**
+  - [x] *Proteksi IDOR / BOLA:* Validasi mutlak bahwa rekening dengan `id` tersebut dimiliki oleh user pemanggil (`GetAccountByIDAndUserID`).
+- [x] **Testing & DoD:** Test generator nomor rekening, test collision handling, test pencegahan IDOR, test unit & integrasi lulus 100%.
 
 ---
 
-### 🔲 Sprint 4: Double-Entry Ledger & Mutasi Transaksi
+### ✅ Sprint 4: Double-Entry Ledger & Mutasi Transaksi (Selesai)
 * **Target Demo:** Sistem mencatat saldo menggunakan double-entry ledger murni dan nasabah dapat membaca riwayat mutasi dengan cursor pagination.
 * **Tabel Database:**
-  * `transactions` (`id UUID`, `idempotency_key VARCHAR UNIQUE`, `reference_no VARCHAR UNIQUE`, `type`, `status`, `amount BIGINT`, `description`, `created_at`)
+  * `transactions` (`id UUID`, `idempotency_key VARCHAR UNIQUE`, `reference_number VARCHAR UNIQUE`, `type`, `status`, `amount BIGINT`, `fee BIGINT`, `notes`, `created_at`)
   * `ledger_entries` (`id UUID`, `transaction_id FK`, `account_id FK`, `direction VARCHAR(2)` ['DB', 'CR'], `amount BIGINT CHECK (amount > 0)`, `balance_after BIGINT`, `created_at`)
 
 #### Tasks:
-- [ ] **Migrasi Database:** Buat migrasi SQL tabel `transactions` dan `ledger_entries` dengan foreign key dan index pada `(account_id, created_at, id)`.
-- [ ] **Domain Ledger Engine (`internal/transfer/ledger.go`):**
-  - [ ] Fungsi pencatatan berpasangan: debit dan kredit harus seimbang ($\sum Debit = \sum Kredit$).
-  - [ ] `accounts.balance` diperbarui sebagai materialized cache yang konsisten di dalam transaksi yang sama.
-- [ ] **Mutasi Rekening (`GET /v1/accounts/{id}/mutations`):**
-  - [ ] Validasi kepemilikan rekening.
-  - [ ] Implementasi **Cursor-Based Pagination** (`created_at` + `id`) untuk efisiensi transaksi bervolume tinggi (bukan offset pagination).
-  - [ ] Menampilkan arah mutasi (`DEBIT` / `KREDIT`), nominal, saldo setelah mutasi, dan keterangan.
-- [ ] **Dev Seeder Tooling:** CLI command / Makefile target (`make seed-balance`) untuk mengisi saldo rekening testing sebelum modul payment gateway aktif.
-- [ ] **Testing & DoD:** Test invarian mutlak: `Saldo Rekening == Total Kredit - Total Debit` di tabel `ledger_entries`.
+- [x] **Migrasi Database:** Buat migrasi SQL tabel `transactions` dan `ledger_entries` dengan foreign key dan index pada `(account_id, created_at, id)` (`000005_create_ledger_and_transactions.up.sql`).
+- [x] **Domain Ledger Engine (`internal/ledger/service.go`):**
+  - [x] Fungsi pencatatan berpasangan: debit dan kredit harus seimbang ($\sum Debit = \sum Kredit$).
+  - [x] `accounts.balance` diperbarui sebagai materialized cache yang konsisten di dalam transaksi database yang sama.
+- [x] **Mutasi Rekening (`GET /v1/accounts/{id}/mutations`):**
+  - [x] Validasi kepemilikan rekening (BOLA defense).
+  - [x] Implementasi **Cursor-Based Pagination** (`created_at` + `id`) via base64 cursor opaque token (`internal/ledger/cursor.go`).
+  - [x] Menampilkan arah mutasi (`DEBIT` / `KREDIT`), nominal, saldo setelah mutasi, dan nomor referensi transaksi.
+- [x] **Dev Seeder Tooling:** CLI command / Makefile target (`make seed` via `cmd/seed/main.go`) untuk mengisi saldo rekening testing (Budi Santoso & Siti Rahma) dengan pembukuan double-entry ledger.
+- [x] **Testing & DoD:** Test invarian mutlak: `Saldo Rekening == Total Kredit - Total Debit` di tabel `ledger_entries` (`VerifyAccountLedgerInvariant`).
 
 ---
 
 ## MVP 3: Transfer Sesama Bank & Concurrency (Sprint 5 – 6)
 
-### 🔲 Sprint 5: Alur Transfer Inti (Bank A ke Bank A)
+### ✅ Sprint 5: Alur Transfer Inti (Bank A ke Bank A) (Selesai)
 * **Target Demo:** Pengguna dapat melakukan inquiry rekening tujuan dan transfer dana antar rekening Bank A dengan otorisasi PIN.
 
 #### Tasks:
-- [ ] **Inquiry Rekening Tujuan (`POST /v1/transfers/inquiry`):**
-  - [ ] Input nomor rekening tujuan.
-  - [ ] Validasi keberadaan rekening dan pastikan rekening berstatus aktif.
-  - [ ] Masking nama pemilik rekening (misal: `BU** SANT***`) untuk privasi nasabah.
-- [ ] **Eksekusi Transfer (`POST /v1/transfers`):**
-  - [ ] Wajib header `Idempotency-Key` (UUIDv4).
-  - [ ] Validasi PIN transaksi pengguna pengirim.
-  - [ ] Validasi bisnis: tidak boleh transfer ke rekening sendiri, nominal `> 0`, batas minimum/maksimum transfer.
-  - [ ] **Atomic Database Transaction:**
+- [x] **Inquiry Rekening Tujuan (`POST /v1/transfers/inquiry`):**
+  - [x] Input nomor rekening tujuan.
+  - [x] Validasi keberadaan rekening dan pastikan rekening berstatus aktif.
+  - [x] Masking nama pemilik rekening (misal: `S*** R****`) untuk privasi nasabah (`internal/transfer/masking.go`).
+- [x] **Eksekusi Transfer (`POST /v1/transfers`):**
+  - [x] Wajib header `Idempotency-Key` (UUIDv4).
+  - [x] Validasi PIN transaksi pengguna pengirim (6 digit Argon2id dengan proteksi lockout).
+  - [x] Validasi bisnis: tidak boleh transfer ke rekening sendiri, nominal $\ge 10.000$, saldo mencukupi.
+  - [x] **Atomic Database Transaction:**
     1. Ambil & kunci dua baris rekening menggunakan `SELECT ... FOR UPDATE` berurutan berdasarkan UUID (`id_min` lalu `id_max`) untuk menjamin **bebas deadlock**.
     2. Cek kecukupan saldo pengirim.
     3. Potong saldo pengirim, tambah saldo penerima.
     4. Tulis baris `transactions` dengan status `SUCCESS`.
     5. Tulis 2 baris `ledger_entries` (Debit pengirim, Kredit penerima).
-- [ ] **Detail Transaksi (`GET /v1/transfers/{id}`):** Mengambil detail bukti transfer berdasarkan ID transaksi.
-- [ ] **Testing & DoD:** Test transfer nominal valid, test penolakan saldo tidak cukup, test salah PIN.
+- [x] **Detail Transaksi (`GET /v1/transfers/{id}`):** Mengambil detail bukti transfer berdasarkan ID transaksi (validasi user pengirim/penerima).
+- [x] **Testing & DoD:** Test transfer nominal valid, test penolakan saldo tidak cukup, test salah PIN, test BOLA defense.
 
 ---
 
-### 🔲 Sprint 6: Concurrency Control, Idempotency & Reliabilitas
+### ✅ Sprint 6: Concurrency Control, Idempotency & Reliabilitas (Selesai)
 * **Target Demo:** Sistem lulus uji transfer balapan paralel tanpa race condition dan lolos uji request ganda (idempoten).
 
 #### Tasks:
-- [ ] **Uji Stres Concurrency (50 Goroutines Parallel):**
-  - [ ] Eksekusi 50 goroutine melakukan transfer simultan dari satu rekening ke rekening lain.
-  - [ ] Verifikasi saldo akhir pengirim dan penerima tepat tanpa selisih 1 rupiah pun.
-- [ ] **Uji Deadlock Prevention:**
-  - [ ] Skenario simulasi: User A transfer ke User B bersamaan dengan User B transfer ke User A.
-  - [ ] Verifikasi kedua request selesai tanpa saling mengunci (deadlock).
-- [ ] **Idempotency Engine Hardening:**
-  - [ ] Request replay dengan payload identik mengembalikan respon cache yang sama tanpa mutasi ganda.
-  - [ ] Request dengan `Idempotency-Key` sama tetapi payload berbeda wajib ditolak dengan HTTP 409 Conflict.
-- [ ] **Limit Transaksi:** Pembatasan limit transfer harian per rekening dan rate limiter per user.
-- [ ] **Background Ledger Auditor:** Job berkala yang memverifikasi kecocokan antara `accounts.balance` dan rekapitulasi `ledger_entries`.
-- [ ] **Testing & DoD:** `go test -race ./...` lulus tanpa temuan data race.
+- [x] **Uji Stres Concurrency (50 Goroutines Parallel):**
+  - [x] Eksekusi 50 goroutine melakukan transfer simultan dari satu rekening ke rekening lain dengan barrier sinkronisasi (`internal/transfer/concurrency_test.go`).
+  - [x] Verifikasi saldo akhir pengirim dan penerima tepat tanpa selisih 1 rupiah pun (konservasi uang).
+- [x] **Uji Deadlock Prevention:**
+  - [x] Skenario simulasi: User A transfer ke User B bersamaan dengan User B transfer ke User A secara paralel.
+  - [x] Verifikasi kedua request selesai tanpa saling mengunci (deadlock).
+- [x] **Idempotency Engine Hardening:**
+  - [x] Request replay dengan payload identik mengembalikan respon cache yang sama tanpa mutasi ganda (`internal/transfer/idempotency_test.go`).
+  - [x] Request dengan `Idempotency-Key` sama tetapi payload berbeda wajib ditolak dengan HTTP 409 Conflict.
+- [x] **Limit Transaksi:**
+  - [x] Token-bucket rate limiter per IP dan per user (`internal/platform/httpx/ratelimit.go`) dipasang di endpoint login (10/menit) dan transfer (30/menit).
+  - [x] Pembatasan limit nominal akumulasi transfer harian per rekening (maksimal Rp 25.000.000/hari di `internal/transfer/service.go`).
+- [x] **Background Ledger Auditor:**
+  - [x] Fungsi verifikasi integritas invarian buku besar `VerifyAccountLedgerInvariant` di `internal/ledger/service.go`.
+  - [x] Worker daemon periodik `Auditor` (`internal/ledger/auditor.go`) yang otomatis memindai seluruh rekening aktif di background dan terintegrasi di `cmd/api/main.go`.
+- [x] **Testing & DoD:** `go test -race ./...` lulus 100% tanpa data race.
 
 ---
 

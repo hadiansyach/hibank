@@ -33,6 +33,7 @@ func NewRouter(opts RouterOptions) *chi.Mux {
 	r.Use(SecurityHeaders)
 	r.Use(CORS([]string{"*"}))
 	r.Use(middleware.CleanPath)
+	r.Use(MaxBodySize(1 << 20)) // 1MB payload limit (OWASP API4)
 
 	// Custom 404 and 405 handlers returning consistent JSON format
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {

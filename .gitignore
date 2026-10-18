@@ -1,0 +1,5 @@
+.codegraph/
+.DS_Store
+
+go-backend/docs/
+mobile/docs/

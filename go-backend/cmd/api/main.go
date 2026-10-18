@@ -13,11 +13,15 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/hibank/bank-a/internal/account"
 	"github.com/hibank/bank-a/internal/auth"
+	"github.com/hibank/bank-a/internal/ledger"
 	"github.com/hibank/bank-a/internal/platform/config"
 	"github.com/hibank/bank-a/internal/platform/database"
 	"github.com/hibank/bank-a/internal/platform/httpx"
 	"github.com/hibank/bank-a/internal/platform/logger"
+	"github.com/hibank/bank-a/internal/transfer"
+	"github.com/hibank/bank-a/internal/user"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -92,19 +96,62 @@ func run() error {
 	)
 
 	var authHandler *auth.Handler
+	var userHandler *user.Handler
+	var accountHandler *account.Handler
+	var ledgerHandler *ledger.Handler
+	var transferHandler *transfer.Handler
 	if dbPool != nil {
 		authService := auth.NewService(dbPool, sessionManager)
 		authHandler = auth.NewHandler(authService)
+
+		userService := user.NewService(dbPool)
+		userHandler = user.NewHandler(userService)
+
+		accountService := account.NewService(dbPool)
+		accountHandler = account.NewHandler(accountService)
+
+		ledgerService := ledger.NewService(dbPool)
+		ledgerHandler = ledger.NewHandler(ledgerService)
+
+		transferService := transfer.NewService(dbPool, ledgerService)
+		transferHandler = transfer.NewHandler(transferService)
+
+		// Start background ledger auditor periodically scanning all accounts for invariant balance
+		ledgerAuditor := ledger.NewAuditor(ledgerService, 10*time.Minute)
+		ledgerAuditor.Start(ctx)
+		defer ledgerAuditor.Stop()
 	}
 
-	// 5. Construct HTTP router with dependencies
+	// 5. Rate limiters
+	loginRateLimiter := httpx.NewRateLimiter(10, time.Minute, httpx.DefaultIPKeyExtractor)
+	defer loginRateLimiter.Close()
+
+	transferRateLimiter := httpx.NewRateLimiter(30, time.Minute, auth.RateLimitKeyExtractor)
+	defer transferRateLimiter.Close()
+
+	// 6. Construct HTTP router with dependencies
 	router := httpx.NewRouter(httpx.RouterOptions{
 		Config:           cfg,
 		ReadinessChecker: readinessChecker,
 		MountV1: func(v1 chi.Router) {
 			if authHandler != nil {
-				authHandler.RegisterRoutes(v1)
+				authHandler.RegisterRoutes(v1, loginRateLimiter.Middleware)
 			}
+			v1.Group(func(protected chi.Router) {
+				protected.Use(auth.Authenticate(sessionManager))
+				if userHandler != nil {
+					userHandler.RegisterRoutes(protected)
+				}
+				if accountHandler != nil {
+					accountHandler.RegisterRoutes(protected)
+				}
+				if ledgerHandler != nil {
+					ledgerHandler.RegisterRoutes(protected)
+				}
+				if transferHandler != nil {
+					transferHandler.RegisterRoutes(protected, transferRateLimiter.Middleware)
+				}
+			})
 		},
 	})
 

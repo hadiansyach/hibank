@@ -68,9 +68,20 @@ FROM users
 WHERE email = $1
 `
 
-func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
+type GetUserByEmailRow struct {
+	ID           pgtype.UUID
+	FullName     string
+	Email        string
+	Phone        string
+	PasswordHash string
+	Status       string
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+}
+
+func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error) {
 	row := q.db.QueryRow(ctx, getUserByEmail, email)
-	var i User
+	var i GetUserByEmailRow
 	err := row.Scan(
 		&i.ID,
 		&i.FullName,
@@ -121,9 +132,20 @@ FROM users
 WHERE phone = $1
 `
 
-func (q *Queries) GetUserByPhone(ctx context.Context, phone string) (User, error) {
+type GetUserByPhoneRow struct {
+	ID           pgtype.UUID
+	FullName     string
+	Email        string
+	Phone        string
+	PasswordHash string
+	Status       string
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+}
+
+func (q *Queries) GetUserByPhone(ctx context.Context, phone string) (GetUserByPhoneRow, error) {
 	row := q.db.QueryRow(ctx, getUserByPhone, phone)
-	var i User
+	var i GetUserByPhoneRow
 	err := row.Scan(
 		&i.ID,
 		&i.FullName,

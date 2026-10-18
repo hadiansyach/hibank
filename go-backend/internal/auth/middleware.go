@@ -83,3 +83,17 @@ func GetSession(ctx context.Context) (*Session, bool) {
 	val, ok := ctx.Value(sessionContextKey).(*Session)
 	return val, ok && val != nil
 }
+
+// WithUserID injects an authenticated user ID into the context (useful for testing and internal context propagation).
+func WithUserID(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, userIDContextKey, userID)
+}
+
+// RateLimitKeyExtractor extracts the authenticated user ID if present, or falls back to client IP.
+func RateLimitKeyExtractor(r *http.Request) string {
+	if userID, ok := GetUserID(r.Context()); ok && userID != "" {
+		return "user:" + userID
+	}
+	return httpx.DefaultIPKeyExtractor(r)
+}
+

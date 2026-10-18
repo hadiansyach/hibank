@@ -28,10 +28,14 @@ func NewHandler(service *Service) *Handler {
 }
 
 // RegisterRoutes registers auth endpoints into the provided chi.Router.
-func (h *Handler) RegisterRoutes(r chi.Router) {
+func (h *Handler) RegisterRoutes(r chi.Router, loginMiddlewares ...func(http.Handler) http.Handler) {
 	r.Route("/auth", func(authRouter chi.Router) {
 		authRouter.Post("/register", h.Register)
-		authRouter.Post("/login", h.Login)
+		if len(loginMiddlewares) > 0 {
+			authRouter.With(loginMiddlewares...).Post("/login", h.Login)
+		} else {
+			authRouter.Post("/login", h.Login)
+		}
 		authRouter.Post("/refresh", h.Refresh)
 		authRouter.Post("/logout", h.Logout)
 	})

@@ -168,6 +168,346 @@ paths:
         '200':
           description: Logged out successfully
 
+  /v1/users/me:
+    get:
+      summary: Get User Profile
+      description: Returns profile information for the authenticated user.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/users/me/pin:
+    put:
+      summary: Set or Update Transaction PIN
+      description: Configures initial 6-digit transaction PIN or updates existing PIN with old PIN verification.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePINRequest'
+      responses:
+        '200':
+          description: PIN configured successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdatePINResponse'
+        '400':
+          description: Invalid PIN format or missing current PIN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Incorrect current PIN or password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: PIN temporarily locked due to failed attempts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/accounts:
+    post:
+      summary: Open New Bank Account
+      description: Creates a new bank account with auto-generated Luhn mod-10 verified account number. Maximum 3 accounts per customer.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAccountRequest'
+      responses:
+        '201':
+          description: Account created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+        '400':
+          description: Invalid account type or payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Maximum number of accounts reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List User Bank Accounts
+      description: Retrieves all active bank accounts owned by the authenticated customer.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of bank accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AccountResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/accounts/{id}:
+    get:
+      summary: Get Bank Account Detail
+      description: Retrieves details of a specific bank account with strict BOLA/IDOR protection.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the bank account
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Account details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+        '400':
+          description: Invalid account ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Account not found or unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/accounts/{id}/mutations:
+    get:
+      summary: Get Account Mutations History
+      description: Retrieves double-entry ledger mutation history for a specific account using cursor-based pagination and strict BOLA protection.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the bank account
+          schema:
+            type: string
+            format: uuid
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque base64 cursor from previous next_cursor
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Maximum items per page (1 to 100, default 20)
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Account mutations retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MutationsResponse'
+        '400':
+          description: Malformed pagination cursor or input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Account not found or unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/transfers/inquiry:
+    post:
+      summary: Transfer Recipient Inquiry
+      description: Verifies recipient account validity and returns PII-masked recipient name for customer confirmation.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InquiryRequest'
+      responses:
+        '200':
+          description: Inquiry successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InquiryResponse'
+        '400':
+          description: Invalid account format or transferring to own same account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Source or target account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/transfers:
+    post:
+      summary: Execute Intra-Bank Transfer
+      description: Atomically debits source account and credits target account within a single database transaction with PIN authorization and idempotency protection.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Unique UUIDv4 key to prevent duplicate execution upon network retries
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+      responses:
+        '201':
+          description: Transfer executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferResponse'
+        '400':
+          description: Missing Idempotency-Key, invalid amount (< Rp 10.000), insufficient balance, or daily transfer limit exceeded (max Rp 25.000.000/day)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Incorrect transaction PIN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Source or target account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: PIN temporarily locked due to 3 consecutive failures
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/transfers/{id}:
+    get:
+      summary: Get Transfer Receipt
+      description: Retrieves transaction receipt and proof of transfer for authorized sender or recipient.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the transfer transaction
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Receipt retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Transfer transaction not found or access denied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   schemas:
     RegisterRequest:
@@ -286,3 +626,261 @@ components:
               type: array
               items:
                 type: string
+
+    UserProfileResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+          example: Ihsan Pratama
+        email:
+          type: string
+          format: email
+          example: ihsan@hibank.com
+        phone:
+          type: string
+          example: "081234567890"
+        status:
+          type: string
+          example: active
+        has_pin:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    UpdatePINRequest:
+      type: object
+      required:
+        - pin
+      properties:
+        pin:
+          type: string
+          pattern: '^[0-9]{6}$'
+          example: "123456"
+          description: 6-digit transaction PIN
+        old_pin:
+          type: string
+          pattern: '^[0-9]{6}$'
+          example: "654321"
+          description: Current PIN (required if has_pin is true)
+        password:
+          type: string
+          description: Alternative verification using account password
+
+    UpdatePINResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: PIN transaksi berhasil disimpan
+        has_pin:
+          type: boolean
+          example: true
+
+    CreateAccountRequest:
+      type: object
+      properties:
+        account_type:
+          type: string
+          enum: [SAVINGS, CHECKING]
+          default: SAVINGS
+          example: SAVINGS
+
+    AccountResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 770e8400-e29b-41d4-a716-446655440000
+        user_id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        account_number:
+          type: string
+          example: "1081234568"
+        account_type:
+          type: string
+          example: SAVINGS
+        balance:
+          type: integer
+          format: int64
+          example: 24750000
+        status:
+          type: string
+          example: active
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    MutationItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        transaction_id:
+          type: string
+          format: uuid
+        account_id:
+          type: string
+          format: uuid
+        direction:
+          type: string
+          enum: [DB, CR]
+          example: CR
+        amount:
+          type: integer
+          format: int64
+          example: 5000000
+        balance_after:
+          type: integer
+          format: int64
+          example: 24750000
+        transaction_type:
+          type: string
+          example: TOPUP
+        status:
+          type: string
+          example: SUCCESS
+        reference_number:
+          type: string
+          example: TRX-20261017-8B29KM1029
+        notes:
+          type: string
+          example: Topup via VA
+        created_at:
+          type: string
+          format: date-time
+
+    MutationsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MutationItem'
+        next_cursor:
+          type: string
+          example: MjAyNi0xMC0xN1QxNDozMDowMFp8YjEyZTE5ZDctODMyNi00NzA1LTliMmEtODc0MjgxMzU4OTEx
+        has_more:
+          type: boolean
+          example: true
+
+    InquiryRequest:
+      type: object
+      required:
+        - source_account_id
+        - target_account_number
+      properties:
+        source_account_id:
+          type: string
+          format: uuid
+          example: 770e8400-e29b-41d4-a716-446655440000
+        target_account_number:
+          type: string
+          example: "1088291040"
+
+    InquiryResponse:
+      type: object
+      properties:
+        source_account_id:
+          type: string
+          format: uuid
+        target_account_number:
+          type: string
+        recipient_name:
+          type: string
+          example: S*** R****
+        bank_code:
+          type: string
+          example: "108"
+        bank_name:
+          type: string
+          example: HiBank
+        fee:
+          type: integer
+          example: 0
+
+    TransferRequest:
+      type: object
+      required:
+        - source_account_id
+        - target_account_number
+        - amount
+        - pin
+      properties:
+        source_account_id:
+          type: string
+          format: uuid
+        target_account_number:
+          type: string
+          example: "1088291040"
+        amount:
+          type: integer
+          format: int64
+          minimum: 10000
+          example: 500000
+        notes:
+          type: string
+          example: Bayar makan siang
+        pin:
+          type: string
+          pattern: '^[0-9]{6}$'
+          example: "123456"
+
+    TransferResponse:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+          format: uuid
+        reference_number:
+          type: string
+          example: TRX-20261017-8B29KM1029
+        source_account_id:
+          type: string
+          format: uuid
+        source_account_number:
+          type: string
+          example: "1088291038"
+        target_account_id:
+          type: string
+          format: uuid
+        target_account_number:
+          type: string
+          example: "1088291040"
+        recipient_name:
+          type: string
+          example: S*** R****
+        amount:
+          type: integer
+          format: int64
+          example: 500000
+        fee:
+          type: integer
+          format: int64
+          example: 0
+        status:
+          type: string
+          example: SUCCESS
+        notes:
+          type: string
+          example: Bayar makan siang
+        created_at:
+          type: string
+          format: date-time
+
+

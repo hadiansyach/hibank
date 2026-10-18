@@ -167,3 +167,15 @@ func Timeout(duration time.Duration) func(http.Handler) http.Handler {
 		})
 	}
 }
+
+// MaxBodySize limits the size of request bodies to prevent resource exhaustion attacks (OWASP API4).
+func MaxBodySize(maxBytes int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Body != nil {
+				r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}

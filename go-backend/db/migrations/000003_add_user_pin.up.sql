@@ -1,0 +1,7 @@
+-- Sprint 2: User Transaction PIN & Account Security
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS pin_hash VARCHAR(255) DEFAULT NULL,
+ADD COLUMN IF NOT EXISTS failed_pin_attempts INT NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS pin_locked_until TIMESTAMPTZ DEFAULT NULL;
+

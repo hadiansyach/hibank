@@ -8,13 +8,53 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Account struct {
+	ID            pgtype.UUID
+	UserID        pgtype.UUID
+	AccountNumber string
+	AccountType   string
+	Balance       int64
+	Status        string
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
+type LedgerEntry struct {
+	ID            pgtype.UUID
+	TransactionID pgtype.UUID
+	AccountID     pgtype.UUID
+	Direction     string
+	Amount        int64
+	BalanceAfter  int64
+	CreatedAt     pgtype.Timestamptz
+}
+
+type Transaction struct {
+	ID              pgtype.UUID
+	IdempotencyKey  pgtype.Text
+	SourceAccountID pgtype.UUID
+	TargetAccountID pgtype.UUID
+	Type            string
+	Amount          int64
+	Fee             int64
+	Status          string
+	ReferenceNumber string
+	Notes           pgtype.Text
+	Metadata        []byte
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
 type User struct {
-	ID           pgtype.UUID
-	FullName     string
-	Email        string
-	Phone        string
-	PasswordHash string
-	Status       string
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
+	ID                pgtype.UUID
+	FullName          string
+	Email             string
+	Phone             string
+	PasswordHash      string
+	Status            string
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+	PinHash           pgtype.Text
+	FailedPinAttempts int32
+	PinLockedUntil    pgtype.Timestamptz
 }
