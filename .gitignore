@@ -2,4 +2,8 @@
 .DS_Store
 
 go-backend/docs/
+
+# Mobile
 mobile/docs/
+mobile/.env*
+mobile/.agents/
